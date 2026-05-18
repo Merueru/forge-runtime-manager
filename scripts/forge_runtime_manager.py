@@ -45,7 +45,7 @@ try:
 except ImportError:
     PSUTIL_AVAILABLE = False
 
-VERSION = "1.0.2"
+VERSION = "1.0.3"
 DISPLAY_NAME = "Forge Runtime Manager"
 
 
@@ -529,7 +529,7 @@ def add_env_to_bat(name, value):
             return False, f"Backup failed: {backup_msg}"
 
         line_to_add = f"set {name}={value}"
-        commandline_pattern = r'(?im)^(set\s+COMMANDLINE_ARGS\b.*)$'
+        commandline_pattern = r'(?im)^(?![ \t]*(?:rem\b|::))([ \t]*set[ \t]+COMMANDLINE_ARGS\b.*)$'
         if re.search(commandline_pattern, content):
             new_content = re.sub(
                 commandline_pattern,
@@ -697,11 +697,13 @@ def read_bat_args():
         if not BAT_FILE.exists():
             return set()
         content = BAT_FILE.read_text(encoding="utf-8", errors="ignore")
-        # Find COMMANDLINE_ARGS line
         for line in content.splitlines():
-            if "COMMANDLINE_ARGS" in line and not line.strip().startswith("rem"):
-                # Extract args from the line
-                args_part = re.sub(r'^.*COMMANDLINE_ARGS\s*=?\s*', '', line, flags=re.IGNORECASE)
+            stripped = line.strip()
+            if stripped.lower().startswith("rem") or stripped.startswith("::"):
+                continue
+            m = re.match(r'^[ \t]*set[ \t]+COMMANDLINE_ARGS[ \t]*=[ \t]*(.*)$', line, re.IGNORECASE)
+            if m:
+                args_part = m.group(1)
                 return set(re.findall(r'--[\w-]+', args_part))
         return set()
     except Exception:
@@ -714,17 +716,19 @@ def add_arg_to_bat(arg):
         if not BAT_FILE.exists():
             return False, "webui-user.bat not found"
         content = BAT_FILE.read_text(encoding="utf-8", errors="ignore")
-        if arg in content:
+        if arg in read_bat_args():
             return True, f"{arg} already present"
         ok, backup_msg = backup_bat_file()
         if not ok:
             return False, f"Backup failed: {backup_msg}"
-        new_content = re.sub(
-            r'(set COMMANDLINE_ARGS=.*?)(\r?\n)',
-            lambda m: m.group(1) + f" {arg}" + m.group(2),
-            content, count=1
+        commandline_pattern = r'(?im)^(?![ \t]*(?:rem\b|::))([ \t]*set[ \t]+COMMANDLINE_ARGS[ \t]*=[ \t]*)(.*)$'
+        new_content, count = re.subn(
+            commandline_pattern,
+            lambda m: m.group(1) + (m.group(2).rstrip() + f" {arg}").strip(),
+            content,
+            count=1,
         )
-        if new_content == content:
+        if count == 0:
             return False, "COMMANDLINE_ARGS line not found"
         BAT_FILE.write_text(new_content, encoding="utf-8")
         log_event("arg_added", {"arg": arg})
@@ -738,11 +742,26 @@ def remove_arg_from_bat(arg):
     try:
         if not BAT_FILE.exists():
             return False, "webui-user.bat not found"
+        if arg not in read_bat_args():
+            return True, f"{arg} not present"
         ok, backup_msg = backup_bat_file()
         if not ok:
             return False, f"Backup failed: {backup_msg}"
         content = BAT_FILE.read_text(encoding="utf-8", errors="ignore")
-        new_content = content.replace(f" {arg}", "").replace(arg, "")
+        def remove_from_commandline(match):
+            prefix, args_text = match.group(1), match.group(2)
+            args = [item for item in args_text.split() if item != arg]
+            return prefix + " ".join(args)
+
+        commandline_pattern = r'(?im)^(?![ \t]*(?:rem\b|::))([ \t]*set[ \t]+COMMANDLINE_ARGS[ \t]*=[ \t]*)(.*)$'
+        new_content, count = re.subn(
+            commandline_pattern,
+            remove_from_commandline,
+            content,
+            count=1,
+        )
+        if count == 0:
+            return False, "COMMANDLINE_ARGS line not found"
         BAT_FILE.write_text(new_content, encoding="utf-8")
         log_event("arg_removed", {"arg": arg})
         return True, f"Removed {arg}"
@@ -1135,7 +1154,8 @@ class ForgeRuntimeManagerScript(scripts.Script):
                 lines.append("Restart Forge to apply FP8.")
                 fp8_now = is_fp8_active(); bat_now = is_fp8_in_bat()
                 st = f"{'Running' if fp8_now else 'Pending restart' if bat_now else 'Off'} | bat: {'yes' if bat_now else 'no'}"
-                return (f"<div style='color:#2ecc71;font-family:monospace;font-size:11px'>{'<br>'.join(lines)}</div>",
+                color = "#2ecc71" if ok else "#e74c3c"
+                return (f"<div style='color:{color};font-family:monospace;font-size:11px'>{'<br>'.join(lines)}</div>",
                         f"<div style='font-family:monospace;font-size:11px;color:#888'>Status: {st}</div>")
 
             def do_fp8_off():
@@ -1144,19 +1164,20 @@ class ForgeRuntimeManagerScript(scripts.Script):
                 lines.append("Restart Forge to apply the change.")
                 fp8_now = is_fp8_active(); bat_now = is_fp8_in_bat()
                 st = f"{'Running' if fp8_now else 'Off'} | bat: {'yes' if bat_now else 'no'}"
-                return (f"<div style='color:#f39c12;font-family:monospace;font-size:11px'>{'<br>'.join(lines)}</div>",
+                color = "#f39c12" if ok else "#e74c3c"
+                return (f"<div style='color:{color};font-family:monospace;font-size:11px'>{'<br>'.join(lines)}</div>",
                         f"<div style='font-family:monospace;font-size:11px;color:#888'>Status: {st}</div>")
 
             def do_restart():
                 try:
-                    shared.state.need_restart = True
+                    shared.state.request_restart()
                     return "<div style='color:#2ecc71;font-family:monospace;font-size:11px'>Restart queued</div>"
                 except Exception as e:
                     return f"<div style='color:#e74c3c;font-family:monospace;font-size:11px'>Failed: {e}</div>"
 
             fp8_on.click(fn=do_fp8_on,  outputs=[fp8_msg, fp8_status])
             fp8_off.click(fn=do_fp8_off, outputs=[fp8_msg, fp8_status])
-            fp8_restart.click(fn=do_restart, outputs=fp8_msg)
+            fp8_restart.click(fn=do_restart, outputs=fp8_msg, _js="restart_reload")
 
             gr.HTML("<hr style='border-color:#333;margin:8px 0'>")
 
@@ -1187,11 +1208,14 @@ class ForgeRuntimeManagerScript(scripts.Script):
                 if not selected:
                     return "<div style='color:#888;font-family:monospace;font-size:11px'>No arguments selected.</div>"
                 results = []
+                all_ok = True
                 for arg in selected:
                     ok, msg = add_arg_to_bat(arg)
+                    all_ok = all_ok and ok
                     results.append(f"{'OK' if ok else 'WARN'}: {msg}")
                 results.append("Restart Forge to apply.")
-                return f"<div style='color:#2ecc71;font-family:monospace;font-size:11px'>{'<br>'.join(results)}</div>"
+                color = "#2ecc71" if all_ok else "#e74c3c"
+                return f"<div style='color:{color};font-family:monospace;font-size:11px'>{'<br>'.join(results)}</div>"
 
             args_refresh.click(fn=do_args_refresh, outputs=[args_html, args_select])
             args_apply.click(fn=do_args_apply, inputs=[args_select], outputs=args_msg)
@@ -1221,11 +1245,14 @@ class ForgeRuntimeManagerScript(scripts.Script):
                 if not selected:
                     return "<div style='color:#888;font-family:monospace;font-size:11px'>No startup skip flags selected.</div>"
                 results = []
+                all_ok = True
                 for flag_name in selected:
                     ok, msg = add_startup_skip_flag(flag_name)
+                    all_ok = all_ok and ok
                     results.append(f"{'OK' if ok else 'WARN'}: {msg}")
                 results.append("Restart Forge to apply.")
-                return f"<div style='color:#2ecc71;font-family:monospace;font-size:11px'>{'<br>'.join(results)}</div>"
+                color = "#2ecc71" if all_ok else "#e74c3c"
+                return f"<div style='color:{color};font-family:monospace;font-size:11px'>{'<br>'.join(results)}</div>"
 
             startup_skip_refresh.click(
                 fn=do_startup_skip_refresh,
@@ -1310,8 +1337,13 @@ class ForgeRuntimeManagerScript(scripts.Script):
             #  Telemetry 
             export_btn = gr.Button("Export Telemetry Log", size="sm")
             export_msg = gr.HTML(value="")
+            def do_export():
+                result = export_telemetry()
+                color = "#e74c3c" if str(result).startswith("Export failed") else "#2ecc71"
+                return f"<div style='color:{color};font-family:monospace;font-size:11px'>Exported: {html_escape(result)}</div>"
+
             export_btn.click(
-                fn=lambda: f"<div style='color:#2ecc71;font-family:monospace;font-size:11px'>Exported: {export_telemetry()}</div>",
+                fn=do_export,
                 outputs=export_msg
             )
 
