@@ -7,5 +7,5 @@
  */
 (() => {
     "use strict";
-    console.log("[ForgeRuntimeManager v1.0.1] JS loaded: no runtime UI hooks enabled");
+    console.log("[ForgeRuntimeManager v1.0.2] JS loaded: no runtime UI hooks enabled");
 })();
