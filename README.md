@@ -21,6 +21,7 @@ to keep the UI usable and make risky runtime states visible.
 - CPU swap detection based on Forge console output
 - Emergency stop when free system RAM drops below user-defined thresholds
 - Conservative launch argument advisor for common Forge memory options
+- Startup install skip suggestions for known extension dependency checks
 - Optional FP8 launch argument helper for `webui-user.bat`
 - Read-only maintenance checks for git state, update script safety, startup
   install behavior, and extension `install.py` files
@@ -58,6 +59,16 @@ webui-user.bat.forge-runtime-manager.bak
 Recommended arguments are intentionally conservative. For example, FP8 is
 recommended after memory pressure or CPU swap symptoms are detected, not simply
 because a GPU has a certain amount of VRAM.
+
+## Startup Install Checks
+
+Some extensions run optional dependency checks during Forge startup. When Forge
+Runtime Manager detects a known opt-out flag for an installed extension, it can
+suggest adding that flag to `webui-user.bat`.
+
+These suggestions are optional. They can reduce repeated startup dependency
+checks when an extension already works on your setup, but optional features may
+not be installed automatically afterward.
 
 ## FP8 Helper
 
