@@ -12,6 +12,8 @@ This extension is not a benchmark optimizer. It does not replace Forge's memory
 manager, patch the model loader, or promise faster generation. Its main goal is
 to keep the UI usable and make risky runtime states visible.
 
+![Preview](images/runmanpic001.png)
+
 ## Features
 
 - RAM and VRAM status panel inside the Forge UI
