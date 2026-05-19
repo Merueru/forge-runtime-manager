@@ -1,4 +1,4 @@
-# Forge Runtime Manager
+# Forge Runtime Manager 🔎
 
 Safety-focused runtime monitor for Stable Diffusion WebUI Forge.
 
