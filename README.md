@@ -123,7 +123,9 @@ pressure checks will be limited.
 - It only edits `webui-user.bat` when the user clicks an explicit apply button.
 - Telemetry export writes a local `telemetry.json` file inside the extension
   folder.
+- Emergency Stop now also updates the Generate controls to the Interrupting state
+  when the interrupt is triggered by the runtime monitor rather than by clicking the UI button.
 
 ## License
 
-MIT License. See [LICENSE](LICENSE).
+MIT License. See [LICENSE](LICENSE)
