@@ -1085,7 +1085,22 @@ def get_state_json():
         "preview_fps": config["preview_fps"],
         "swap_count":  _swap_detected_count,
         "fp8_active":  is_fp8_active(),
+        "emergency_interrupted": _emergency_interrupted,
     })
+
+
+def get_runtime_state():
+    return {
+        "state": get_pressure_state(),
+        "emergency_interrupted": _emergency_interrupted,
+        "interrupted": bool(getattr(shared.state, "interrupted", False)),
+        "stopping_generation": bool(getattr(shared.state, "stopping_generation", False)),
+        "job": getattr(shared.state, "job", ""),
+    }
+
+
+def on_app_started(_demo, app):
+    app.add_api_route("/forge-runtime-manager/state", get_runtime_state, methods=["GET"])
 
 
 # -----------------------------------------------------------------------------
@@ -1489,3 +1504,4 @@ def on_ui_settings():
 script_callbacks.on_model_loaded(on_model_loaded)
 script_callbacks.on_ui_settings(on_ui_settings)
 script_callbacks.on_before_ui(on_before_ui)
+script_callbacks.on_app_started(on_app_started)
